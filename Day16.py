@@ -60,7 +60,7 @@ def find_field_indexes(rules, all_tickets) :
 
     unique_indexes = {}
     while field_indexes :
-        field, value = [ (k, v[0]) for k, v in field_indexes.items() if len(v) == 1 ][0]
+        field, value = next((k, v[0]) for k, v in field_indexes.items() if len(v) == 1 )
         unique_indexes[field] = value
         field_indexes.pop(field)
         for field in field_indexes.keys() :
