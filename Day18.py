@@ -2,7 +2,7 @@ import re
 
 
 
-def process_expression(expression, add_has_precedence) :
+def process_expression(expression, rules) :
 
     # Split expression into tokens
     tokens = re.findall('([+*\(\)]|[0-9]+) *', expression)
@@ -16,17 +16,22 @@ def process_expression(expression, add_has_precedence) :
         else :
             raise RuntimeError('unexpected operator')
 
+    def get_precedence(token, rules) :
+        return [idx for idx, data in enumerate(rules) if token in data][0]
+
     output = []
     operators = []
     while tokens :
         token = tokens.pop(0)
         if token.isdigit() :
             output.append(int(token))
-        elif token in ['+', '*'] :
-            if operators and operators[-1] != '(' and (not add_has_precedence or not (token == '+' and operators[-1] == '*')) :
+        elif token in ['+', '*', '('] :
+            this_precedence = get_precedence(token, rules)
+            while operators and operators[-1] != '(' :
+                stack_precedence = get_precedence(operators[-1], rules)
+                if this_precedence > stack_precedence :
+                    break
                 calculate(output, operators.pop())
-            operators.append(token)
-        elif token == '(' :
             operators.append(token)
         elif token == ')' :
             while operators :
@@ -46,8 +51,8 @@ with open('data/input-day18.txt', 'r') as fp :
     sum_no_precedence = 0
     sum_add_has_precedence = 0
     for expression in fp :
-        sum_no_precedence += process_expression(expression, False)
-        sum_add_has_precedence += process_expression(expression, True)
+        sum_no_precedence += process_expression(expression, [['+', '*'], ['(', ')']])
+        sum_add_has_precedence += process_expression(expression, [['*'], ['+'], ['(', ')']])
 
     print(sum_no_precedence)
     print(sum_add_has_precedence)
