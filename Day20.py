@@ -1,4 +1,5 @@
 import math
+import copy
 
 
 class Image :
@@ -10,15 +11,15 @@ class Image :
     def __set_edges(self) :
         self.__leftIndex = ''.join([ x[0] for x in self.__data ])
         self.__rightIndex = ''.join([ x[-1] for x in self.__data ])
-        self.__topIndex = self.__data[0]
-        self.__bottomIndex = self.__data[-1]
+        self.__topIndex = ''.join(self.__data[0])
+        self.__bottomIndex = ''.join(self.__data[-1])
 
     def rotateCW(self):
         data = []
         for row in range(0, len(self.__data)) :
-            data.append('')
+            data.append([])
             for col in range(0, len(self.__data)) :
-                data[row] += self.__data[len(self.__data)-col-1][row]
+                data[row].append(self.__data[len(self.__data)-col-1][row])
         self.__data = data
         self.__set_edges()
 
@@ -37,7 +38,9 @@ class Image :
 
     def print(self) :
         print('Index', self.__index)
-        print('\n'.join(self.__data))
+        for row in self.__data :
+            print(''.join(row))
+        print(self.__leftIndex, self.__topIndex, self.__rightIndex, self.__bottomIndex)
         print()
 
     @property
@@ -83,7 +86,7 @@ def read_images(filename) :
 
             image_data = []
             for image_row in fp :
-                image_row = image_row.rstrip()
+                image_row = [ c for c in image_row.rstrip() ]
                 if not image_row :
                     break
                 image_data.append(image_row)
@@ -94,11 +97,12 @@ def read_images(filename) :
 
 
 def find_image_correlation(images) :
+    images = copy.deepcopy(images)
+
     # Setup set of all possible image edges (including flipped), and count the frequency of them
     edges = []
     for image in images.values() :
         edges.extend(image.edge_indexes)
-
     edge_frequency = { x: edges.count(x) for x in edges }
 
     # For all edges with a count of 1, these must be either edges or corners. Others, with a count
@@ -110,59 +114,55 @@ def find_image_correlation(images) :
 
     # Output image will be square, so setup a blank output
     result_size = int(math.sqrt(len(images)))
-    result = []
-    for row in range(0, result_size) :
-        result.append([])
-        for col in range(0, result_size) :
-            result[row].append(0)
+    result = [[ None for i in range(0, result_size)] for j in range(0, result_size)]
 
     # Start with a corner image for the top-left, and orient it correctly
-    used_images = set()
     top_left = next(index for index, edges in image_edges.items() if edges == 2)
-    while edge_frequency[images[top_left].left_index] != 1 or edge_frequency[images[top_left].top_index] != 1 :
-        images[top_left].rotateCW()
-    result[0][0] = top_left
-    used_images.add(top_left)
+    top_left_image = images[top_left]
+    while edge_frequency[top_left_image.left_index] != 1 or edge_frequency[top_left_image.top_index] != 1 :
+        top_left_image.rotateCW()
+    result[0][0] = top_left_image
+    del images[top_left]
 
     # Complete the top row
     for col in range(1, result_size) :
+        prev_image = result[0][col-1]
         for index, image in images.items() :
-            if index in used_images :
-                continue
-            if images[result[0][col-1]].right_index in image.edge_indexes :
-                while images[result[0][col-1]].right_index not in [ images[index].left_index, images[index].left_index[::-1]] :
-                    images[index].rotateCW()
-                if images[result[0][col-1]].right_index != images[index].left_index :
-                    images[index].flipVertical()
-                result[0][col] = index
-                used_images.add(index)
+            if prev_image.right_index in image.edge_indexes :
+                while prev_image.right_index not in [ image.left_index, image.left_index[::-1]] :
+                    image.rotateCW()
+                if prev_image.right_index != image.left_index :
+                    image.flipVertical()
+                result[0][col] = image
+                del images[index]
                 break
 
     # Complete the remaining rows using the row above
     for row in range(1, result_size) :
         for col in range(0, result_size) :
+            top_image = result[row-1][col]
             for index, image in images.items():
-                if index in used_images :
-                    continue
-                if images[result[row-1][col]].bottom_index in image.edge_indexes :
-                    while images[result[row-1][col]].bottom_index not in [ images[index].top_index, images[index].top_index[::-1]] :
-                        images[index].rotateCW()
-                    if images[result[row-1][col]].bottom_index != images[index].top_index :
-                        images[index].flipHorizontal()
-                    result[row][col] = index
-                    used_images.add(index)
+                if top_image.bottom_index in image.edge_indexes :
+                    while top_image.bottom_index not in [ image.top_index, image.top_index[::-1]] :
+                        image.rotateCW()
+                    if top_image.bottom_index != image.top_index :
+                        image.flipHorizontal()
+                    result[row][col] = image
+                    del images[index]
                     break
 
     return result
 
 
-def create_combined_image(correlation, images) :
-    image_size = images[correlation[0][0]].size
+def create_combined_image(correlation) :
+    image_size = correlation[0][0].size - 2
     data = []
     for row in range(0, len(correlation)) :
         for y in range(0, image_size) :
-            data.append(''.join([images[x].data[y] for x in correlation[row]]))
-
+            rowdata = []
+            for image in correlation[row] :
+                rowdata.extend(image.data[y+1][1:-1])
+            data.append(rowdata)
     return Image(0, data)
 
 
@@ -182,11 +182,9 @@ def find_sea_monsters(combined_image, sea_monster) :
                                 break
                     if found :
                         for sy in range(len(sea_monster)):
-                            row = list(combined_image.data[y + sy])
                             for sx in range(len(sea_monster[0])):
                                 if sea_monster[sy][sx] == '#':
-                                    row[x + sx] = 'O'
-                            combined_image.data[y + sy] = ''.join(row)
+                                    combined_image.data[y+sy][x+sx] = 'O'
                         sea_monsters.append((x, y))
 
             combined_image.rotateCW()
@@ -198,22 +196,19 @@ def find_sea_monsters(combined_image, sea_monster) :
 # Read images
 images = read_images('data/input-day20.txt')
 
+# Match images
 correlation = find_image_correlation(images)
-print('Corner ids multiplied:', correlation[0][0] * correlation[-1][0] * correlation[-1][-1] * correlation[0][-1])
-
+print('Corner ids multiplied:', correlation[0][0].index * correlation[-1][0].index * correlation[-1][-1].index * correlation[0][-1].index)
 
 # Create merged images, stripping borders
+combined_image = create_combined_image(correlation)
 
-for image in images.values() :
-    image.trim()
-combined_image = create_combined_image(correlation, images)
-
+# Search for sea monsters; modifies combined image
 monster = [
     '                  # ',
     '#    ##    ##    ###',
     ' #  #  #  #  #  #   '
 ]
-
 sea_monsters = find_sea_monsters(combined_image, monster)
 
 print('Number not in sea monsters:', sum([1 if x == '#' else 0 for row in combined_image.data for x in row]))
